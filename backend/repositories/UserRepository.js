@@ -3,11 +3,18 @@ import bcrypt from 'bcryptjs';
 
 class UserRepository {
   constructor() {
-    this.pool = connectSupabase();
+    this.pool = null;
+  }
+
+  getPool() {
+    if (!this.pool) {
+      this.pool = connectSupabase();
+    }
+    return this.pool;
   }
 
   async findById(id) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT id, name, email, role, status, created_at, updated_at FROM users WHERE id = $1',
       [id]
     );
@@ -15,7 +22,7 @@ class UserRepository {
   }
 
   async findByIdWithPassword(id) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT * FROM users WHERE id = $1',
       [id]
     );
@@ -23,7 +30,7 @@ class UserRepository {
   }
 
   async findByEmail(email) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT id, name, email, role, status, created_at, updated_at FROM users WHERE email = $1',
       [email]
     );
@@ -31,7 +38,7 @@ class UserRepository {
   }
 
   async findByEmailWithPassword(email) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT * FROM users WHERE email = $1',
       [email]
     );
@@ -45,7 +52,7 @@ class UserRepository {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `INSERT INTO users (name, email, password, role, status) 
        VALUES ($1, $2, $3, $4, $5) 
        RETURNING id, name, email, role, status, created_at, updated_at`,
@@ -80,7 +87,7 @@ class UserRepository {
       RETURNING id, name, email, role, status, created_at, updated_at
     `;
 
-    const result = await this.pool.query(query, values);
+    const result = await this.getPool().query(query, values);
     return result.rows[0];
   }
 
@@ -88,7 +95,7 @@ class UserRepository {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'UPDATE users SET password = $1 WHERE id = $2 RETURNING id',
       [hashedPassword, id]
     );
@@ -97,7 +104,7 @@ class UserRepository {
   }
 
   async delete(id) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'DELETE FROM users WHERE id = $1 RETURNING id',
       [id]
     );
@@ -105,12 +112,12 @@ class UserRepository {
   }
 
   async count() {
-    const result = await this.pool.query('SELECT COUNT(*) as count FROM users');
+    const result = await this.getPool().query('SELECT COUNT(*) as count FROM users');
     return parseInt(result.rows[0].count);
   }
 
   async findAll() {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT id, name, email, role, status, created_at, updated_at FROM users ORDER BY created_at DESC'
     );
     return result.rows;

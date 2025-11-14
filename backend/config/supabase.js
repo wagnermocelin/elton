@@ -9,6 +9,13 @@ const connectSupabase = () => {
   }
 
   try {
+    if (!process.env.DATABASE_URL) {
+      console.error('❌ DATABASE_URL não está configurada no .env');
+      process.exit(1);
+    }
+
+    console.log('🔗 Conectando ao Supabase...');
+    
     pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: {

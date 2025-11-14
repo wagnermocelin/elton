@@ -3,11 +3,18 @@ import bcrypt from 'bcryptjs';
 
 class StudentRepository {
   constructor() {
-    this.pool = connectSupabase();
+    this.pool = null;
+  }
+
+  getPool() {
+    if (!this.pool) {
+      this.pool = connectSupabase();
+    }
+    return this.pool;
   }
 
   async findById(id) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `SELECT id, name, email, is_email_verified, phone, birth_date, gender, 
               join_date, status, service_type, blocked, block_reason, photo, 
               trainer_id, created_at, updated_at 
@@ -18,7 +25,7 @@ class StudentRepository {
   }
 
   async findByIdWithPassword(id) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT * FROM students WHERE id = $1',
       [id]
     );
@@ -26,7 +33,7 @@ class StudentRepository {
   }
 
   async findByEmail(email) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `SELECT id, name, email, is_email_verified, phone, birth_date, gender, 
               join_date, status, service_type, blocked, block_reason, photo, 
               trainer_id, created_at, updated_at 
@@ -37,7 +44,7 @@ class StudentRepository {
   }
 
   async findByEmailWithPassword(email) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT * FROM students WHERE email = $1',
       [email]
     );
@@ -45,7 +52,7 @@ class StudentRepository {
   }
 
   async findByTrainer(trainerId) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `SELECT id, name, email, is_email_verified, phone, birth_date, gender, 
               join_date, status, service_type, blocked, block_reason, photo, 
               trainer_id, created_at, updated_at 
@@ -74,7 +81,7 @@ class StudentRepository {
       hashedPassword = await bcrypt.hash(password, salt);
     }
 
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `INSERT INTO students 
        (name, email, password, phone, birth_date, gender, service_type, status, trainer_id) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
@@ -125,7 +132,7 @@ class StudentRepository {
                 trainer_id, created_at, updated_at
     `;
 
-    const result = await this.pool.query(query, values);
+    const result = await this.getPool().query(query, values);
     return result.rows[0];
   }
 
@@ -133,7 +140,7 @@ class StudentRepository {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
 
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'UPDATE students SET password = $1 WHERE id = $2 RETURNING id',
       [hashedPassword, id]
     );
@@ -142,7 +149,7 @@ class StudentRepository {
   }
 
   async setEmailVerificationToken(id, token, expires) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `UPDATE students 
        SET email_verification_token = $1, email_verification_expires = $2 
        WHERE id = $3 
@@ -153,7 +160,7 @@ class StudentRepository {
   }
 
   async setPasswordResetToken(id, token, expires) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `UPDATE students 
        SET password_reset_token = $1, password_reset_expires = $2 
        WHERE id = $3 
@@ -164,7 +171,7 @@ class StudentRepository {
   }
 
   async findByEmailVerificationToken(token) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `SELECT * FROM students 
        WHERE email_verification_token = $1 
        AND email_verification_expires > NOW()`,
@@ -174,7 +181,7 @@ class StudentRepository {
   }
 
   async findByPasswordResetToken(token) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       `SELECT * FROM students 
        WHERE password_reset_token = $1 
        AND password_reset_expires > NOW()`,
@@ -184,7 +191,7 @@ class StudentRepository {
   }
 
   async delete(id) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'DELETE FROM students WHERE id = $1 RETURNING id',
       [id]
     );
@@ -192,12 +199,12 @@ class StudentRepository {
   }
 
   async count() {
-    const result = await this.pool.query('SELECT COUNT(*) as count FROM students');
+    const result = await this.getPool().query('SELECT COUNT(*) as count FROM students');
     return parseInt(result.rows[0].count);
   }
 
   async countByTrainer(trainerId) {
-    const result = await this.pool.query(
+    const result = await this.getPool().query(
       'SELECT COUNT(*) as count FROM students WHERE trainer_id = $1',
       [trainerId]
     );
