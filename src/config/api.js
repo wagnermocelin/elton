@@ -9,8 +9,8 @@ const API_URL = import.meta.env.VITE_API_URL
     ? import.meta.env.VITE_API_URL 
     : `${import.meta.env.VITE_API_URL}/api`
   : import.meta.env.PROD 
-    ? 'https://power-training-backend.onrender.com/api'  // Produção - Render (com Supabase)
-    : 'http://localhost:5000/api';                        // Desenvolvimento - Local
+    ? 'https://elton-hk8q.vercel.app/api'  // Produção - Vercel Backend
+    : 'http://localhost:5000/api';          // Desenvolvimento - Local
 
 export default API_URL;
 
