@@ -1,5 +1,5 @@
 import express from 'express';
-import Workout from '../models/Workout.js';
+import WorkoutRepository from '../repositories/WorkoutRepository.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -7,8 +7,8 @@ router.use(protect);
 
 router.get('/', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    // Remover filtro por trainer - retorna todos os treinos
-    const workouts = await Workout.find({});
+    // Retorna todos os treinos
+    const workouts = await WorkoutRepository.findAll();
     res.json({ success: true, count: workouts.length, data: workouts });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -17,9 +17,8 @@ router.get('/', authorize('trainer', 'professional'), async (req, res) => {
 
 router.post('/', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    // Manter trainer para referência, mas não filtrar por ele
-    const workout = await Workout.create({ ...req.body, trainer: req.user._id });
-    res.status(201).json({ success: true, data: workout });
+    const workout = await WorkoutRepository.create({ ...req.body, trainerId: req.user.id });
+    res.json({ success: true, data: workout });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
@@ -27,7 +26,7 @@ router.post('/', authorize('trainer', 'professional'), async (req, res) => {
 
 router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const workout = await Workout.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const workout = await WorkoutRepository.update(req.params.id, req.body);
     if (!workout) return res.status(404).json({ success: false, message: 'Treino não encontrado' });
     res.json({ success: true, data: workout });
   } catch (error) {
@@ -37,7 +36,7 @@ router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
 
 router.delete('/:id', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const workout = await Workout.findByIdAndDelete(req.params.id);
+    const workout = await WorkoutRepository.delete(req.params.id);
     if (!workout) return res.status(404).json({ success: false, message: 'Treino não encontrado' });
     res.json({ success: true, message: 'Treino deletado' });
   } catch (error) {
