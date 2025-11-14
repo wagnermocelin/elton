@@ -1,8 +1,8 @@
 import express from 'express';
-import Student from '../models/Student.js';
-import Payment from '../models/Payment.js';
+import StudentRepository from '../repositories/StudentRepository.js';
 import { protect, authorize } from '../middleware/auth.js';
 import { generateVerificationToken, sendVerificationEmail } from '../utils/emailService.js';
+import connectSupabase from '../config/supabase.js';
 
 const router = express.Router();
 
@@ -13,13 +13,20 @@ router.use(protect);
 // @access  Private (Trainer)
 router.get('/', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    // Remover filtro por trainer - retorna todos os alunos
-    const students = await Student.find({}).select('-password');
+    // Buscar todos os alunos (sem filtro por trainer)
+    const pool = connectSupabase();
+    const result = await pool.query(
+      `SELECT id, name, email, is_email_verified, phone, birth_date, gender, 
+              join_date, status, service_type, blocked, block_reason, photo, 
+              trainer_id, created_at, updated_at 
+       FROM students 
+       ORDER BY name ASC`
+    );
     
     res.json({
       success: true,
-      count: students.length,
-      data: students
+      count: result.rows.length,
+      data: result.rows
     });
   } catch (error) {
     res.status(500).json({
@@ -35,7 +42,7 @@ router.get('/', authorize('trainer', 'professional'), async (req, res) => {
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id).select('-password');
+    const student = await StudentRepository.findById(req.params.id);
     
     if (!student) {
       return res.status(404).json({
@@ -64,33 +71,32 @@ router.post('/', authorize('trainer', 'professional'), async (req, res) => {
   try {
     console.log('👤 POST /api/students - Criando aluno');
     console.log('- Dados recebidos:', req.body);
-    console.log('- Trainer ID:', req.user._id);
+    console.log('- Trainer ID:', req.user.id);
     
     // Remover senha dos dados se foi enviada (será criada pelo aluno)
     const { password, ...studentDataWithoutPassword } = req.body;
     
     const studentData = {
       ...studentDataWithoutPassword,
-      trainer: req.user._id,
+      trainerId: req.user.id,
       isEmailVerified: false
     };
     
     console.log('- Dados a serem salvos:', studentData);
     
-    const student = await Student.create(studentData);
+    const student = await StudentRepository.create(studentData);
     
-    console.log('✅ Aluno criado com sucesso:', student._id);
+    console.log('✅ Aluno criado com sucesso:', student.id);
     
     // Gerar token de verificação
     const verificationToken = generateVerificationToken();
-    student.emailVerificationToken = verificationToken;
-    student.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 horas
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
     
-    await student.save();
+    await StudentRepository.setEmailVerificationToken(student.id, verificationToken, expires);
     
     // Enviar email de verificação
     try {
-      const emailResult = await sendVerificationEmail(student, verificationToken, req.user._id);
+      const emailResult = await sendVerificationEmail(student, verificationToken, req.user.id);
       console.log('📧 Email de verificação enviado para:', student.email);
       
       res.status(201).json({
@@ -145,11 +151,7 @@ router.post('/', authorize('trainer', 'professional'), async (req, res) => {
 // @access  Private (Trainer)
 router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).select('-password');
+    const student = await StudentRepository.update(req.params.id, req.body);
     
     if (!student) {
       return res.status(404).json({
@@ -176,7 +178,7 @@ router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
 // @access  Private (Trainer)
 router.delete('/:id', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndDelete(req.params.id);
+    const student = await StudentRepository.delete(req.params.id);
     
     if (!student) {
       return res.status(404).json({
@@ -203,14 +205,10 @@ router.delete('/:id', authorize('trainer', 'professional'), async (req, res) => 
 // @access  Private (Trainer)
 router.post('/:id/unblock', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(
-      req.params.id,
-      { 
-        blocked: false,
-        blockReason: null
-      },
-      { new: true }
-    ).select('-password');
+    const student = await StudentRepository.update(req.params.id, {
+      blocked: false,
+      blockReason: null
+    });
     
     if (!student) {
       return res.status(404).json({
@@ -238,14 +236,10 @@ router.post('/:id/unblock', authorize('trainer', 'professional'), async (req, re
 // @access  Private (Trainer)
 router.post('/:id/block', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const student = await Student.findByIdAndUpdate(
-      req.params.id,
-      { 
-        blocked: true,
-        blockReason: 'manual'
-      },
-      { new: true }
-    ).select('-password');
+    const student = await StudentRepository.update(req.params.id, {
+      blocked: true,
+      blockReason: 'manual'
+    });
     
     if (!student) {
       return res.status(404).json({
@@ -273,45 +267,54 @@ router.post('/:id/block', authorize('trainer', 'professional'), async (req, res)
 // @access  Private (Trainer)
 router.post('/check-overdue', authorize('trainer', 'professional'), async (req, res) => {
   try {
+    const pool = connectSupabase();
     const today = new Date();
     
     // Buscar pagamentos atrasados
-    const overduePayments = await Payment.find({
-      trainer: req.user._id,
-      status: { $in: ['pending', 'overdue'] },
-      dueDate: { $lt: today }
-    });
+    const overduePayments = await pool.query(
+      `SELECT DISTINCT student_id 
+       FROM payments 
+       WHERE trainer_id = $1 
+       AND status IN ('pending', 'overdue') 
+       AND due_date < $2`,
+      [req.user.id, today]
+    );
     
     // Atualizar status dos pagamentos para overdue
-    await Payment.updateMany(
-      {
-        trainer: req.user._id,
-        status: 'pending',
-        dueDate: { $lt: today }
-      },
-      { status: 'overdue' }
+    await pool.query(
+      `UPDATE payments 
+       SET status = 'overdue' 
+       WHERE trainer_id = $1 
+       AND status = 'pending' 
+       AND due_date < $2`,
+      [req.user.id, today]
     );
     
     // Buscar IDs únicos de alunos com pagamentos atrasados
-    const studentIds = [...new Set(overduePayments.map(p => p.student.toString()))];
+    const studentIds = overduePayments.rows.map(p => p.student_id);
+    
+    if (studentIds.length === 0) {
+      return res.json({
+        success: true,
+        message: 'Nenhum aluno com pagamentos atrasados',
+        blockedCount: 0
+      });
+    }
     
     // Bloquear alunos inadimplentes
-    const result = await Student.updateMany(
-      {
-        _id: { $in: studentIds },
-        trainer: req.user._id,
-        blocked: false
-      },
-      {
-        blocked: true,
-        blockReason: 'payment_overdue'
-      }
+    const result = await pool.query(
+      `UPDATE students 
+       SET blocked = true, block_reason = 'payment_overdue' 
+       WHERE id = ANY($1) 
+       AND trainer_id = $2 
+       AND blocked = false`,
+      [studentIds, req.user.id]
     );
     
     res.json({
       success: true,
-      message: `${result.modifiedCount} aluno(s) bloqueado(s) por inadimplência`,
-      blockedCount: result.modifiedCount
+      message: `${result.rowCount} aluno(s) bloqueado(s) por inadimplência`,
+      blockedCount: result.rowCount
     });
   } catch (error) {
     res.status(500).json({
