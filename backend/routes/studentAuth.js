@@ -1,5 +1,5 @@
 import express from 'express';
-import Student from '../models/Student.js';
+import StudentRepository from '../repositories/StudentRepository.js';
 import { generateVerificationToken, sendVerificationEmail, sendPasswordResetEmail } from '../utils/emailService.js';
 
 const router = express.Router();
@@ -19,11 +19,7 @@ router.post('/activate', async (req, res) => {
     }
 
     // Buscar aluno com o token
-    const student = await Student.findOne({
-      email: email.toLowerCase(),
-      emailVerificationToken: token,
-      emailVerificationExpires: { $gt: Date.now() }
-    }).select('+emailVerificationToken +emailVerificationExpires +password');
+    const student = await StudentRepository.findByEmailVerificationToken(token);
 
     if (!student) {
       return res.status(400).json({
@@ -32,8 +28,16 @@ router.post('/activate', async (req, res) => {
       });
     }
 
+    // Verificar email
+    if (student.email.toLowerCase() !== email.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token inválido ou expirado'
+      });
+    }
+
     // Verificar se já está ativado
-    if (student.isEmailVerified) {
+    if (student.is_email_verified) {
       return res.status(400).json({
         success: false,
         message: 'Esta conta já foi ativada'
@@ -49,12 +53,12 @@ router.post('/activate', async (req, res) => {
     }
 
     // Atualizar aluno
-    student.password = password;
-    student.isEmailVerified = true;
-    student.emailVerificationToken = undefined;
-    student.emailVerificationExpires = undefined;
-    
-    await student.save();
+    await StudentRepository.updatePassword(student.id, password);
+    await StudentRepository.update(student.id, {
+      isEmailVerified: true,
+      emailVerificationToken: null,
+      emailVerificationExpires: null
+    });
 
     console.log('✅ Conta ativada com sucesso:', student.email);
 
@@ -90,12 +94,9 @@ router.post('/resend-verification', async (req, res) => {
       });
     }
 
-    const student = await Student.findOne({ 
-      email: email.toLowerCase(),
-      isEmailVerified: false 
-    });
+    const student = await StudentRepository.findByEmail(email.toLowerCase());
 
-    if (!student) {
+    if (!student || student.is_email_verified) {
       return res.status(404).json({
         success: false,
         message: 'Aluno não encontrado ou já ativado'
@@ -104,10 +105,9 @@ router.post('/resend-verification', async (req, res) => {
 
     // Gerar novo token
     const verificationToken = generateVerificationToken();
-    student.emailVerificationToken = verificationToken;
-    student.emailVerificationExpires = Date.now() + 24 * 60 * 60 * 1000; // 24 horas
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 horas
     
-    await student.save();
+    await StudentRepository.setEmailVerificationToken(student.id, verificationToken, expires);
 
     // Enviar email
     const emailResult = await sendVerificationEmail(student, verificationToken, student.trainer);
@@ -141,10 +141,7 @@ router.post('/forgot-password', async (req, res) => {
       });
     }
 
-    const student = await Student.findOne({ 
-      email: email.toLowerCase(),
-      isEmailVerified: true 
-    });
+    const student = await StudentRepository.findByEmail(email.toLowerCase());
 
     if (!student) {
       // Por segurança, não revelar se o email existe ou não
@@ -156,10 +153,9 @@ router.post('/forgot-password', async (req, res) => {
 
     // Gerar token de reset
     const resetToken = generateVerificationToken();
-    student.passwordResetToken = resetToken;
-    student.passwordResetExpires = Date.now() + 60 * 60 * 1000; // 1 hora
+    const expires = new Date(Date.now() + 1 * 60 * 60 * 1000); // 1 hora
     
-    await student.save();
+    await StudentRepository.setPasswordResetToken(student.id, resetToken, expires);
 
     // Enviar email
     const emailResult = await sendPasswordResetEmail(student, resetToken, student.trainer);
@@ -194,11 +190,7 @@ router.post('/reset-password', async (req, res) => {
     }
 
     // Buscar aluno com o token
-    const student = await Student.findOne({
-      email: email.toLowerCase(),
-      passwordResetToken: token,
-      passwordResetExpires: { $gt: Date.now() }
-    }).select('+passwordResetToken +passwordResetExpires +password');
+    const student = await StudentRepository.findByPasswordResetToken(token);
 
     if (!student) {
       return res.status(400).json({
@@ -215,12 +207,20 @@ router.post('/reset-password', async (req, res) => {
       });
     }
 
+    // Verificar email
+    if (student.email.toLowerCase() !== email.toLowerCase()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token inválido ou expirado'
+      });
+    }
+
     // Atualizar senha
-    student.password = password;
-    student.passwordResetToken = undefined;
-    student.passwordResetExpires = undefined;
-    
-    await student.save();
+    await StudentRepository.updatePassword(student.id, password);
+    await StudentRepository.update(student.id, {
+      passwordResetToken: null,
+      passwordResetExpires: null
+    });
 
     console.log('✅ Senha redefinida com sucesso:', student.email);
 
@@ -256,14 +256,12 @@ router.get('/verify-token', async (req, res) => {
       });
     }
 
-    let query = { email: email.toLowerCase() };
+    let student;
     
     if (type === 'activation') {
-      query.emailVerificationToken = token;
-      query.emailVerificationExpires = { $gt: Date.now() };
+      student = await StudentRepository.findByEmailVerificationToken(token);
     } else if (type === 'reset') {
-      query.passwordResetToken = token;
-      query.passwordResetExpires = { $gt: Date.now() };
+      student = await StudentRepository.findByPasswordResetToken(token);
     } else {
       return res.status(400).json({
         success: false,
@@ -271,9 +269,7 @@ router.get('/verify-token', async (req, res) => {
       });
     }
 
-    const student = await Student.findOne(query);
-
-    if (!student) {
+    if (!student || student.email.toLowerCase() !== email.toLowerCase()) {
       return res.status(400).json({
         success: false,
         message: 'Token inválido ou expirado'
