@@ -1,5 +1,5 @@
 import express from 'express';
-import Food from '../models/Food.js';
+import FoodRepository from '../repositories/FoodRepository.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -12,37 +12,16 @@ router.get('/', async (req, res) => {
   try {
     console.log('🍽️ GET /api/foods - Requisição recebida');
     console.log('Query params:', req.query);
-    console.log('User ID:', req.user._id);
+    console.log('User ID:', req.user.id);
     
     const { search, category, popular } = req.query;
     
-    let query = {
-      $or: [
-        { isCustom: false }, // Alimentos padrão (TACO)
-        { trainer: req.user._id } // Alimentos customizados do próprio trainer
-      ]
-    };
-    
-    // Filtro por busca (nome ou tags)
-    if (search) {
-      query.$text = { $search: search };
-    }
-    
-    // Filtro por categoria
-    if (category) {
-      query.category = category;
-    }
-    
-    // Filtro por populares
-    if (popular === 'true') {
-      query.popular = true;
-    }
-    
-    console.log('Query final:', JSON.stringify(query));
-    
-    const foods = await Food.find(query)
-      .sort({ isCustom: -1, popular: -1, name: 1 }) // Customizados primeiro, depois populares, depois alfabético
-      .limit(1000); // Aumentar limite para 1000
+    const foods = await FoodRepository.findAll({
+      search,
+      category,
+      popular,
+      trainerId: req.user.id
+    });
     
     console.log(`✅ ${foods.length} alimentos encontrados`);
     
@@ -58,14 +37,14 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const food = await Food.findById(req.params.id);
+    const food = await FoodRepository.findById(req.params.id);
     
     if (!food) {
       return res.status(404).json({ success: false, message: 'Alimento não encontrado' });
     }
     
     // Verificar se o alimento é customizado e pertence ao trainer
-    if (food.isCustom && food.trainer.toString() !== req.user._id.toString()) {
+    if (food.is_custom && food.trainer_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Acesso negado' });
     }
     
@@ -80,10 +59,10 @@ router.get('/:id', async (req, res) => {
 // @access  Private (Trainer)
 router.post('/', async (req, res) => {
   try {
-    const food = await Food.create({
+    const food = await FoodRepository.create({
       ...req.body,
       isCustom: true,
-      trainer: req.user._id,
+      trainerId: req.user.id,
       source: 'Manual'
     });
     
@@ -98,27 +77,23 @@ router.post('/', async (req, res) => {
 // @access  Private (Trainer)
 router.put('/:id', async (req, res) => {
   try {
-    const food = await Food.findById(req.params.id);
+    const food = await FoodRepository.findById(req.params.id);
     
     if (!food) {
       return res.status(404).json({ success: false, message: 'Alimento não encontrado' });
     }
     
     // Apenas alimentos customizados podem ser editados
-    if (!food.isCustom) {
+    if (!food.is_custom) {
       return res.status(403).json({ success: false, message: 'Não é possível editar alimentos padrão' });
     }
     
     // Verificar se pertence ao trainer
-    if (food.trainer.toString() !== req.user._id.toString()) {
+    if (food.trainer_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Acesso negado' });
     }
     
-    const updatedFood = await Food.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const updatedFood = await FoodRepository.update(req.params.id, req.body);
     
     res.json({ success: true, data: updatedFood });
   } catch (error) {
@@ -131,23 +106,23 @@ router.put('/:id', async (req, res) => {
 // @access  Private (Trainer)
 router.delete('/:id', async (req, res) => {
   try {
-    const food = await Food.findById(req.params.id);
+    const food = await FoodRepository.findById(req.params.id);
     
     if (!food) {
       return res.status(404).json({ success: false, message: 'Alimento não encontrado' });
     }
     
     // Apenas alimentos customizados podem ser deletados
-    if (!food.isCustom) {
+    if (!food.is_custom) {
       return res.status(403).json({ success: false, message: 'Não é possível deletar alimentos padrão' });
     }
     
     // Verificar se pertence ao trainer
-    if (food.trainer.toString() !== req.user._id.toString()) {
+    if (food.trainer_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Acesso negado' });
     }
     
-    await food.deleteOne();
+    await FoodRepository.delete(req.params.id);
     
     res.json({ success: true, message: 'Alimento deletado com sucesso' });
   } catch (error) {
@@ -184,13 +159,13 @@ router.post('/:id/calculate', async (req, res) => {
   try {
     const { amount, unit } = req.body;
     
-    const food = await Food.findById(req.params.id);
+    const food = await FoodRepository.findById(req.params.id);
     
     if (!food) {
       return res.status(404).json({ success: false, message: 'Alimento não encontrado' });
     }
     
-    const macros = food.calculateMacros(amount, unit);
+    const macros = FoodRepository.calculateMacros(food, amount, unit);
     
     res.json({ 
       success: true, 
