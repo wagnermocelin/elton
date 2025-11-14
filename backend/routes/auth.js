@@ -18,6 +18,7 @@ const generateToken = (id, role) => {
 // @access  Public
 router.post('/login', async (req, res) => {
   try {
+    console.log('🔐 POST /login - Tentativa de login:', req.body.email);
     const { email, password } = req.body;
 
     if (!email || !password) {
@@ -27,8 +28,10 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    console.log('🔍 Buscando usuário...');
     // Verificar se é um profissional
     let user = await UserRepository.findByEmailWithPassword(email);
+    console.log('👤 Usuário encontrado:', !!user);
     
     if (user) {
       if (user.status !== 'active') {
@@ -113,10 +116,12 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (error) {
+    console.error('❌ Erro no login:', error);
     res.status(500).json({
       success: false,
       message: 'Erro no servidor',
-      error: error.message
+      error: error.message,
+      stack: error.stack
     });
   }
 });

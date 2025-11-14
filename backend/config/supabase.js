@@ -20,7 +20,10 @@ const connectSupabase = () => {
       connectionString: process.env.DATABASE_URL,
       ssl: {
         rejectUnauthorized: false
-      }
+      },
+      max: 20, // Máximo de conexões no pool
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 2000,
     });
 
     pool.on('connect', () => {
@@ -29,7 +32,7 @@ const connectSupabase = () => {
 
     pool.on('error', (err) => {
       console.error('❌ Erro inesperado no pool do Postgres:', err);
-      process.exit(-1);
+      // Não fazer exit, apenas logar o erro
     });
 
     return pool;
@@ -37,6 +40,14 @@ const connectSupabase = () => {
     console.error(`❌ Erro ao conectar ao Supabase: ${error.message}`);
     process.exit(1);
   }
+};
+
+// Exportar o pool diretamente também
+export const getPool = () => {
+  if (!pool) {
+    connectSupabase();
+  }
+  return pool;
 };
 
 // Função helper para executar queries
