@@ -1,15 +1,13 @@
 // Configuração da URL da API
-// Em produção: usa backend do Render (MongoDB Atlas)
+// Em produção: usa backend do Vercel com Supabase
 // Em desenvolvimento: usa localhost
 
-// Usar variável de ambiente ou fallback
-// Se VITE_API_URL já tem /api no final, não adicionar novamente
 const API_URL = import.meta.env.VITE_API_URL 
   ? import.meta.env.VITE_API_URL.endsWith('/api') 
     ? import.meta.env.VITE_API_URL 
     : `${import.meta.env.VITE_API_URL}/api`
   : import.meta.env.PROD 
-    ? 'https://elton-hk8q.vercel.app/api'  // Produção - Vercel Backend
+    ? 'https://elton-hk8q.vercel.app/api'  // Produção - Vercel (CORS aberto)
     : 'http://localhost:5000/api';          // Desenvolvimento - Local
 
 export default API_URL;
