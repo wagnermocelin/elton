@@ -1,8 +1,8 @@
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import User from '../models/User.js';
-import Student from '../models/Student.js';
+import UserRepository from '../repositories/UserRepository.js';
+import StudentRepository from '../repositories/StudentRepository.js';
 
 const router = express.Router();
 
@@ -28,7 +28,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Verificar se é um profissional
-    let user = await User.findOne({ email }).select('+password');
+    let user = await UserRepository.findByEmailWithPassword(email);
     
     if (user) {
       if (user.status !== 'active') {
@@ -38,7 +38,7 @@ router.post('/login', async (req, res) => {
         });
       }
 
-      const isMatch = await user.matchPassword(password);
+      const isMatch = await UserRepository.matchPassword(password, user.password);
       
       if (!isMatch) {
         return res.status(401).json({
@@ -47,13 +47,13 @@ router.post('/login', async (req, res) => {
         });
       }
 
-      const token = generateToken(user._id, user.role);
+      const token = generateToken(user.id, user.role);
 
       return res.json({
         success: true,
         token,
         user: {
-          id: user._id,
+          id: user.id,
           name: user.name,
           email: user.email,
           role: user.role
@@ -62,7 +62,7 @@ router.post('/login', async (req, res) => {
     }
 
     // Verificar se é um aluno
-    user = await Student.findOne({ email }).select('+password');
+    user = await StudentRepository.findByEmailWithPassword(email);
     
     if (user) {
       if (user.status !== 'active') {
@@ -73,7 +73,7 @@ router.post('/login', async (req, res) => {
       }
 
       if (user.blocked) {
-        const reason = user.blockReason === 'payment_overdue' 
+        const reason = user.block_reason === 'payment_overdue' 
           ? 'Seu acesso foi bloqueado por inadimplência. Entre em contato com seu personal trainer.'
           : 'Seu acesso foi bloqueado. Entre em contato com seu personal trainer.';
         
@@ -84,7 +84,7 @@ router.post('/login', async (req, res) => {
         });
       }
 
-      const isMatch = await user.matchPassword(password);
+      const isMatch = await StudentRepository.matchPassword(password, user.password);
       
       if (!isMatch) {
         return res.status(401).json({
@@ -93,13 +93,13 @@ router.post('/login', async (req, res) => {
         });
       }
 
-      const token = generateToken(user._id, 'student');
+      const token = generateToken(user.id, 'student');
 
       return res.json({
         success: true,
         token,
         user: {
-          id: user._id,
+          id: user.id,
           name: user.name,
           email: user.email,
           role: 'student'
@@ -126,7 +126,7 @@ router.post('/login', async (req, res) => {
 // @access  Public (apenas se não houver usuários)
 router.post('/register', async (req, res) => {
   try {
-    const userCount = await User.countDocuments();
+    const userCount = await UserRepository.count();
     
     if (userCount > 0) {
       return res.status(403).json({
@@ -137,7 +137,7 @@ router.post('/register', async (req, res) => {
 
     const { name, email, password } = req.body;
 
-    const user = await User.create({
+    const user = await UserRepository.create({
       name,
       email,
       password,
@@ -145,13 +145,13 @@ router.post('/register', async (req, res) => {
       status: 'active'
     });
 
-    const token = generateToken(user._id, user.role);
+    const token = generateToken(user.id, user.role);
 
     res.status(201).json({
       success: true,
       token,
       user: {
-        id: user._id,
+        id: user.id,
         name: user.name,
         email: user.email,
         role: user.role
@@ -174,7 +174,7 @@ router.post('/create-first-user', async (req, res) => {
   try {
     console.log('🔧 Tentando criar primeiro usuário...');
     
-    const existingUser = await User.findOne({ email: 'juliana@zem.com' });
+    const existingUser = await UserRepository.findByEmail('juliana@zem.com');
     if (existingUser) {
       console.log('⚠️ Usuário já existe');
       return res.json({ 
@@ -185,22 +185,22 @@ router.post('/create-first-user', async (req, res) => {
     }
 
     console.log('💾 Criando usuário no banco...');
-    // O modelo User já tem um pre-save hook que criptografa a senha automaticamente
-    const user = await User.create({
+    // O repository já criptografa a senha automaticamente
+    const user = await UserRepository.create({
       name: 'Juliana Dolinski',
       email: 'juliana@zem.com',
-      password: '123456', // Será criptografada automaticamente pelo modelo
+      password: '123456', // Será criptografada automaticamente pelo repository
       role: 'professional'
     });
 
-    console.log('✅ Usuário criado:', user._id);
+    console.log('✅ Usuário criado:', user.id);
     res.json({ 
       success: true, 
       message: 'Usuário criado com sucesso!',
       email: 'juliana@zem.com',
       senha: '123456',
       role: 'professional',
-      id: user._id
+      id: user.id
     });
   } catch (error) {
     console.error('❌ Erro ao criar usuário:', error);

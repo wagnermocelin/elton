@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import connectDB from './config/database.js';
+import connectSupabase from './config/supabase.js';
 
 // Importar rotas
 import authRoutes from './routes/auth.js';
@@ -20,8 +20,8 @@ import exerciseRoutes from './routes/exercises.js';
 // Carregar variáveis de ambiente
 dotenv.config();
 
-// Conectar ao banco de dados
-connectDB();
+// Conectar ao banco de dados Supabase (Postgres)
+connectSupabase();
 
 const app = express();
 
