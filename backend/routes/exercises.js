@@ -1,5 +1,5 @@
 import express from 'express';
-import Exercise from '../models/Exercise.js';
+import ExerciseRepository from '../repositories/ExerciseRepository.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -15,48 +15,15 @@ router.get('/', async (req, res) => {
     
     const { search, category, muscleGroup, equipment, difficulty, popular } = req.query;
     
-    let query = {
-      $or: [
-        { isCustom: false }, // Exercícios padrão
-        { trainer: req.user._id } // Exercícios customizados do próprio trainer
-      ]
-    };
-    
-    // Filtro por busca (nome ou tags)
-    if (search) {
-      query.$text = { $search: search };
-    }
-    
-    // Filtro por categoria
-    if (category) {
-      query.category = category;
-    }
-    
-    // Filtro por grupo muscular
-    if (muscleGroup) {
-      query.muscleGroup = muscleGroup;
-    }
-    
-    // Filtro por equipamento
-    if (equipment) {
-      query.equipment = equipment;
-    }
-    
-    // Filtro por dificuldade
-    if (difficulty) {
-      query.difficulty = difficulty;
-    }
-    
-    // Filtro por populares
-    if (popular === 'true') {
-      query.popular = true;
-    }
-    
-    console.log('Query final:', JSON.stringify(query));
-    
-    const exercises = await Exercise.find(query)
-      .sort({ isCustom: -1, popular: -1, name: 1 }) // Customizados primeiro, depois populares, depois alfabético
-      .limit(1000);
+    const exercises = await ExerciseRepository.findAll({
+      search,
+      category,
+      muscleGroup,
+      equipment,
+      difficulty,
+      popular,
+      trainerId: req.user.id
+    });
     
     console.log(`✅ ${exercises.length} exercícios encontrados`);
     
@@ -72,14 +39,14 @@ router.get('/', async (req, res) => {
 // @access  Private
 router.get('/:id', async (req, res) => {
   try {
-    const exercise = await Exercise.findById(req.params.id);
+    const exercise = await ExerciseRepository.findById(req.params.id);
     
     if (!exercise) {
       return res.status(404).json({ success: false, message: 'Exercício não encontrado' });
     }
     
     // Verificar se o exercício é customizado e pertence ao trainer
-    if (exercise.isCustom && exercise.trainer.toString() !== req.user._id.toString()) {
+    if (exercise.is_custom && exercise.trainer_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Acesso negado' });
     }
     
@@ -94,10 +61,10 @@ router.get('/:id', async (req, res) => {
 // @access  Private (Trainer)
 router.post('/', async (req, res) => {
   try {
-    const exercise = await Exercise.create({
+    const exercise = await ExerciseRepository.create({
       ...req.body,
       isCustom: true,
-      trainer: req.user._id
+      trainerId: req.user.id
     });
     
     res.status(201).json({ success: true, data: exercise });
@@ -111,27 +78,23 @@ router.post('/', async (req, res) => {
 // @access  Private (Trainer)
 router.put('/:id', async (req, res) => {
   try {
-    const exercise = await Exercise.findById(req.params.id);
+    const exercise = await ExerciseRepository.findById(req.params.id);
     
     if (!exercise) {
       return res.status(404).json({ success: false, message: 'Exercício não encontrado' });
     }
     
     // Apenas exercícios customizados podem ser editados
-    if (!exercise.isCustom) {
+    if (!exercise.is_custom) {
       return res.status(403).json({ success: false, message: 'Não é possível editar exercícios padrão' });
     }
     
     // Verificar se pertence ao trainer
-    if (exercise.trainer.toString() !== req.user._id.toString()) {
+    if (exercise.trainer_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Acesso negado' });
     }
     
-    const updatedExercise = await Exercise.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const updatedExercise = await ExerciseRepository.update(req.params.id, req.body);
     
     res.json({ success: true, data: updatedExercise });
   } catch (error) {
@@ -144,23 +107,23 @@ router.put('/:id', async (req, res) => {
 // @access  Private (Trainer)
 router.delete('/:id', async (req, res) => {
   try {
-    const exercise = await Exercise.findById(req.params.id);
+    const exercise = await ExerciseRepository.findById(req.params.id);
     
     if (!exercise) {
       return res.status(404).json({ success: false, message: 'Exercício não encontrado' });
     }
     
     // Apenas exercícios customizados podem ser deletados
-    if (!exercise.isCustom) {
+    if (!exercise.is_custom) {
       return res.status(403).json({ success: false, message: 'Não é possível deletar exercícios padrão' });
     }
     
     // Verificar se pertence ao trainer
-    if (exercise.trainer.toString() !== req.user._id.toString()) {
+    if (exercise.trainer_id !== req.user.id) {
       return res.status(403).json({ success: false, message: 'Acesso negado' });
     }
     
-    await exercise.deleteOne();
+    await ExerciseRepository.delete(req.params.id);
     
     res.json({ success: true, message: 'Exercício deletado com sucesso' });
   } catch (error) {
