@@ -1,5 +1,5 @@
 import express from 'express';
-import User from '../models/User.js';
+import UserRepository from '../repositories/UserRepository.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -13,7 +13,7 @@ router.use(authorize('trainer', 'professional', 'admin'));
 // @access  Private (Trainer)
 router.get('/', async (req, res) => {
   try {
-    const users = await User.find().select('-password');
+    const users = await UserRepository.findAll();
     
     res.json({
       success: true,
@@ -34,13 +34,14 @@ router.get('/', async (req, res) => {
 // @access  Private (Trainer)
 router.post('/', async (req, res) => {
   try {
-    const user = await User.create(req.body);
+    const user = await UserRepository.create(req.body);
     
     res.status(201).json({
       success: true,
       data: user
     });
   } catch (error) {
+    console.error('❌ Erro ao criar usuário:', error);
     res.status(400).json({
       success: false,
       message: 'Erro ao criar usuário',
@@ -54,11 +55,7 @@ router.post('/', async (req, res) => {
 // @access  Private (Trainer)
 router.put('/:id', async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    ).select('-password');
+    const user = await UserRepository.update(req.params.id, req.body);
     
     if (!user) {
       return res.status(404).json({
@@ -85,7 +82,7 @@ router.put('/:id', async (req, res) => {
 // @access  Private (Trainer)
 router.delete('/:id', async (req, res) => {
   try {
-    const user = await User.findByIdAndDelete(req.params.id);
+    const user = await UserRepository.delete(req.params.id);
     
     if (!user) {
       return res.status(404).json({
