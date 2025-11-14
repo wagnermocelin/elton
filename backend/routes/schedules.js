@@ -1,5 +1,5 @@
 import express from 'express';
-import Schedule from '../models/Schedule.js';
+import ScheduleRepository from '../repositories/ScheduleRepository.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -7,9 +7,8 @@ router.use(protect);
 
 router.get('/', async (req, res) => {
   try {
-    // Remover filtro por trainer - retorna todos os agendamentos
-    const schedules = await Schedule.find({})
-      .populate('student', 'name');
+    // Retorna todos os agendamentos com dados do student
+    const schedules = await ScheduleRepository.findAll();
     res.json({ success: true, data: schedules });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -22,9 +21,9 @@ router.post('/', authorize('trainer', 'professional'), async (req, res) => {
     console.log('- Dados recebidos:', JSON.stringify(req.body, null, 2));
     console.log('- weekSchedule:', req.body.weekSchedule);
     
-    const schedule = await Schedule.create({ ...req.body, trainer: req.user._id });
+    const schedule = await ScheduleRepository.create({ ...req.body, trainerId: req.user.id });
     
-    console.log('✅ Ficha criada:', schedule._id);
+    console.log('✅ Ficha criada:', schedule.id);
     console.log('- weekSchedule salvo:', schedule.weekSchedule);
     
     res.status(201).json({ success: true, data: schedule });
@@ -41,7 +40,7 @@ router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
     console.log('- Dados recebidos:', JSON.stringify(req.body, null, 2));
     console.log('- weekSchedule:', req.body.weekSchedule);
     
-    const schedule = await Schedule.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    const schedule = await ScheduleRepository.update(req.params.id, req.body);
     
     console.log('✅ Ficha atualizada');
     console.log('- weekSchedule salvo:', schedule.weekSchedule);
@@ -55,7 +54,7 @@ router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
 
 router.delete('/:id', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    await Schedule.findByIdAndDelete(req.params.id);
+    await ScheduleRepository.delete(req.params.id);
     res.json({ success: true, message: 'Ficha deletada' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

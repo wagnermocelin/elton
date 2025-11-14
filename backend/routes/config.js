@@ -1,5 +1,5 @@
 import express from 'express';
-import Config from '../models/Config.js';
+import ConfigRepository from '../repositories/ConfigRepository.js';
 import { protect, authorize } from '../middleware/auth.js';
 import nodemailer from 'nodemailer';
 
@@ -9,12 +9,10 @@ router.use(authorize('trainer', 'professional'));
 
 router.get('/', async (req, res) => {
   try {
-    // Incluir campos sensíveis com select para o próprio trainer poder ver/editar
-    let config = await Config.findOne({ trainer: req.user._id })
-      .select('+emailConfig.smtpUser +emailConfig.smtpPassword');
+    let config = await ConfigRepository.findByTrainer(req.user.id);
     
     if (!config) {
-      config = await Config.create({ trainer: req.user._id });
+      config = await ConfigRepository.create({ trainerId: req.user.id });
     }
     res.json({ success: true, data: config });
   } catch (error) {
@@ -26,47 +24,15 @@ router.put('/', async (req, res) => {
   try {
     console.log('📝 PUT /api/config - Dados recebidos:', JSON.stringify(req.body, null, 2));
     
-    let config = await Config.findOne({ trainer: req.user._id });
-    console.log('📦 Config existente encontrado:', !!config);
-    
-    if (!config) {
-      console.log('🆕 Criando nova config...');
-      config = await Config.create({ ...req.body, trainer: req.user._id });
-    } else {
-      console.log('🔄 Atualizando config existente...');
-      // Fazer merge manual dos campos para preservar objetos aninhados
-      if (req.body.gymName !== undefined) config.gymName = req.body.gymName;
-      if (req.body.logo !== undefined) config.logo = req.body.logo;
-      
-      // Merge do emailConfig
-      if (req.body.emailConfig) {
-        if (!config.emailConfig) config.emailConfig = {};
-        
-        Object.keys(req.body.emailConfig).forEach(key => {
-          if (key === 'emailTemplates' && req.body.emailConfig.emailTemplates) {
-            // Merge dos templates
-            if (!config.emailConfig.emailTemplates) config.emailConfig.emailTemplates = {};
-            Object.keys(req.body.emailConfig.emailTemplates).forEach(templateKey => {
-              config.emailConfig.emailTemplates[templateKey] = req.body.emailConfig.emailTemplates[templateKey];
-            });
-          } else {
-            config.emailConfig[key] = req.body.emailConfig[key];
-          }
-        });
-        
-        // IMPORTANTE: Marcar como modificado para o Mongoose salvar objetos aninhados
-        config.markModified('emailConfig');
-      }
-      
-      await config.save();
-      console.log('✅ Config salva com sucesso!');
-    }
+    console.log('🔄 Atualizando config...');
+    const config = await ConfigRepository.update(req.user.id, req.body);
+    console.log('✅ Config salva com sucesso!');
     
     console.log('📤 Retornando config:', {
-      id: config._id,
-      provider: config.emailConfig?.provider,
-      hasUser: !!config.emailConfig?.smtpUser,
-      hasPassword: !!config.emailConfig?.smtpPassword
+      id: config.id,
+      provider: config.email_config?.provider,
+      hasUser: !!config.email_config?.smtpUser,
+      hasPassword: !!config.email_config?.smtpPassword
     });
     
     res.json({ success: true, data: config });
@@ -93,23 +59,23 @@ router.post('/test-email', async (req, res) => {
     }
 
     // Buscar configurações
-    const config = await Config.findOne({ trainer: req.user._id }).select('+emailConfig.smtpUser +emailConfig.smtpPassword');
+    const config = await ConfigRepository.findByTrainer(req.user.id);
     
     console.log('⚙️ Configuração encontrada:', {
-      provider: config?.emailConfig?.provider,
-      enabled: config?.emailConfig?.enabled,
-      hasUser: !!config?.emailConfig?.smtpUser,
-      hasPassword: !!config?.emailConfig?.smtpPassword
+      provider: config?.email_config?.provider,
+      enabled: config?.email_config?.enabled,
+      hasUser: !!config?.email_config?.smtpUser,
+      hasPassword: !!config?.email_config?.smtpPassword
     });
     
-    if (!config || !config.emailConfig) {
+    if (!config || !config.email_config) {
       return res.status(400).json({
         success: false,
         message: 'Configurações de email não encontradas'
       });
     }
 
-    const emailConfig = config.emailConfig;
+    const emailConfig = config.email_config;
 
     // Validar configurações necessárias
     if (emailConfig.provider === 'gmail' || emailConfig.provider === 'sendgrid' || emailConfig.provider === 'smtp') {
