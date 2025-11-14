@@ -81,8 +81,14 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-  console.log(`📊 Ambiente: ${process.env.NODE_ENV}`);
-  console.log(`🌐 CORS habilitado para: ${process.env.CORS_ORIGIN}`);
-});
+// Só iniciar o servidor se não estiver no Vercel (serverless)
+if (process.env.VERCEL !== '1') {
+  app.listen(PORT, () => {
+    console.log(`🚀 Servidor rodando na porta ${PORT}`);
+    console.log(`📊 Ambiente: ${process.env.NODE_ENV}`);
+    console.log(`🌐 CORS habilitado para: ${process.env.CORS_ORIGIN}`);
+  });
+}
+
+// Exportar para Vercel serverless
+export default app;
