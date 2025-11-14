@@ -1,5 +1,5 @@
 import express from 'express';
-import Measurement from '../models/Measurement.js';
+import MeasurementRepository from '../repositories/MeasurementRepository.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -7,10 +7,8 @@ router.use(protect);
 
 router.get('/', async (req, res) => {
   try {
-    // Remover filtro por trainer - retorna todas as medidas
-    const measurements = await Measurement.find({})
-      .populate('student', 'name')
-      .populate('trainer', 'name');
+    // Retorna todas as medidas com dados de student e trainer
+    const measurements = await MeasurementRepository.findAll();
     res.json({ success: true, data: measurements });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -19,9 +17,7 @@ router.get('/', async (req, res) => {
 
 router.get('/student/:studentId', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const measurements = await Measurement.find({ student: req.params.studentId })
-      .populate('trainer', 'name')
-      .sort('-date');
+    const measurements = await MeasurementRepository.findByStudent(req.params.studentId);
     res.json({ success: true, data: measurements });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -31,11 +27,11 @@ router.get('/student/:studentId', authorize('trainer', 'professional'), async (r
 router.post('/', authorize('trainer', 'professional'), async (req, res) => {
   try {
     console.log('📊 POST /api/measurements - Dados recebidos:', req.body);
-    console.log('👤 Trainer ID:', req.user._id);
-    const measurementData = { ...req.body, trainer: req.user._id };
+    console.log('👤 Trainer ID:', req.user.id);
+    const measurementData = { ...req.body, trainerId: req.user.id };
     console.log('📊 Dados a serem salvos:', measurementData);
-    const measurement = await Measurement.create(measurementData);
-    console.log('✅ Medida criada com sucesso:', measurement._id);
+    const measurement = await MeasurementRepository.create(measurementData);
+    console.log('✅ Medida criada com sucesso:', measurement.id);
     res.status(201).json({ success: true, data: measurement });
   } catch (error) {
     console.error('❌ Erro ao criar medida:', error.message);
@@ -50,11 +46,7 @@ router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
     console.log('- ID:', req.params.id);
     console.log('- Dados recebidos:', req.body);
     
-    const measurement = await Measurement.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true, runValidators: true }
-    );
+    const measurement = await MeasurementRepository.update(req.params.id, req.body);
     
     if (!measurement) {
       console.log('❌ Medição não encontrada');
@@ -82,7 +74,7 @@ router.put('/:id', authorize('trainer', 'professional'), async (req, res) => {
 
 router.delete('/:id', authorize('trainer', 'professional'), async (req, res) => {
   try {
-    const measurement = await Measurement.findByIdAndDelete(req.params.id);
+    const measurement = await MeasurementRepository.delete(req.params.id);
     
     if (!measurement) {
       return res.status(404).json({
