@@ -3,11 +3,14 @@
 // Em desenvolvimento: usa localhost
 
 // Usar variável de ambiente ou fallback
+// Se VITE_API_URL já tem /api no final, não adicionar novamente
 const API_URL = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL}/api`
+  ? import.meta.env.VITE_API_URL.endsWith('/api') 
+    ? import.meta.env.VITE_API_URL 
+    : `${import.meta.env.VITE_API_URL}/api`
   : import.meta.env.PROD 
-    ? 'https://power-training-backend.vercel.app/api'  // Produção - Vercel (atualizar depois)
-    : 'http://localhost:5000/api';                      // Desenvolvimento - Local
+    ? 'https://power-training-backend.onrender.com/api'  // Produção - Render
+    : 'http://localhost:5000/api';                        // Desenvolvimento - Local
 
 export default API_URL;
 
